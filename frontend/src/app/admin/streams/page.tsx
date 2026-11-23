@@ -14,6 +14,7 @@ import { SkeletonList } from "@/components/ui/SkeletonList";
 import { Button } from "@/components/ui/Button";
 import { StreamClawbackForm } from "@/components/admin/StreamClawbackForm";
 import { VirtualizedList } from "@/components/ui/VirtualizedList";
+import { STREAM_HEALTH_TOKENS, STREAM_STATUS_TOKENS } from "@/lib/streams/statusTokens";
 import {
   computeStreamHealth,
   formatEstimatedDepletion,
@@ -22,19 +23,11 @@ import {
 
 const PAGE_SIZE = 20;
 const STREAM_ROW_HEIGHT = 200;
-
-const HEALTH_BADGE_STYLES: Record<StreamHealthStatus, string> = {
-  streaming: "bg-status-success/10 text-status-success border-status-success/30",
-  near_depletion: "bg-status-warning/10 text-status-warning border-status-warning/30",
-  completed: "bg-bg-subtle text-text-secondary border-border-default",
-  paused: "bg-status-info/10 text-status-info border-status-info/30",
-};
-
 const HEALTH_BADGE_LABELS: Record<StreamHealthStatus, string> = {
-  streaming: "Streaming",
-  near_depletion: "Near Depletion <10%",
-  completed: "Completed",
-  paused: "Paused",
+  Streaming: "Streaming",
+  "Near Depletion": "Near Depletion <10%",
+  Completed: "Completed",
+  Paused: "Paused",
 };
 
 export default function AdminStreamsPage() {
@@ -152,18 +145,40 @@ export default function AdminStreamsPage() {
           renderItem={(stream) => {
             const isActionable = BigInt(stream.unclaimed || "0") > BigInt(0);
             const isOpen = activeStreamId === stream.streamId;
+            const health = computeStreamHealth({
+              totalVested: stream.claimed,
+              unclaimed: stream.unclaimed,
+              createdAt: stream.createdAt,
+              updatedAt: stream.updatedAt,
+              status: stream.status,
+            });
+            const healthData = health.status.toLowerCase().replace(" ", "-");
+            const isNearDepletion = health.status === "Near Depletion";
 
             return (
               <div
                 className="p-6 bg-bg-elevated rounded-lg border border-border-default mb-4 min-w-[640px]"
                 data-testid={`stream-row-${stream.streamId}`}
+                data-health={healthData}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-2">
                       <span className="font-mono text-sm text-text-primary">{stream.streamId}</span>
-                      <span className="text-xs uppercase tracking-wide text-text-secondary">
+                      <span
+                        className={`rounded-full border px-2.5 py-1 text-xs uppercase tracking-wide ${
+                          STREAM_STATUS_TOKENS[stream.status]
+                        }`}
+                      >
                         {stream.status}
+                      </span>
+                      <span
+                        className={`rounded-full border px-2.5 py-1 text-xs ${
+                          STREAM_HEALTH_TOKENS[health.status]
+                        }`}
+                        data-health={healthData}
+                      >
+                        {HEALTH_BADGE_LABELS[health.status]}
                       </span>
                     </div>
                     <div className="text-sm text-text-secondary mb-1">
@@ -211,7 +226,7 @@ export default function AdminStreamsPage() {
                       />
                     </div>
                     <div className="mt-1 text-xs text-text-secondary">
-                      {formatEstimatedDepletion(health.estimatedDepletion)}
+                      {formatEstimatedDepletion(health.estimatedDepletionAt)}
                     </div>
                   </div>
                 </div>

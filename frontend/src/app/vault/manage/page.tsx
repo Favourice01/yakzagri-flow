@@ -21,6 +21,9 @@ import {
   AuditLogCard,
   NetworkBackboneCard,
   VaultFooter,
+  DepositCard,
+  WithdrawalCard,
+  FeeSummary,
 } from "@/components/vault";
 import { getStatusBadgeClasses, getStatusDotClasses } from "@/components/ui/StatusBadge";
 
@@ -244,6 +247,8 @@ export default function VaultManagePage() {
       }
       setModal(null);
       setDisputeReason("");
+      setDisputeCategory(DISPUTE_CATEGORIES[0]);
+      setActionError(null);
       void fetchData();
       setTimeout(() => setActionSuccess(null), 4000);
     } catch (err) {
@@ -610,8 +615,20 @@ export default function VaultManagePage() {
 
               {/* ── Right column (1/3 width) ── */}
               <div className="space-y-6">
+                <WithdrawCollateralCard
+                  balance={parseFloat(walletBalance?.balance ?? "0")}
+                  reserve={totalLocked}
+                />
+
                 {/* Payment overview */}
                 <PaymentOverviewCard totalCngn={totalLocked} />
+
+                <DepositCard />
+                <WithdrawalCard
+                  balance={parseFloat(walletBalance?.balance ?? "0")}
+                  committed={totalLocked}
+                />
+                <FeeSummary amount={totalLocked} />
 
                 {/* Audit log */}
                 <AuditLogCard

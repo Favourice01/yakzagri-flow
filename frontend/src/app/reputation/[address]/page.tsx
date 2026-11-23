@@ -105,8 +105,26 @@ export default function UserReputationPage() {
               <dt className="text-xs text-text-muted">{label}</dt>
               <dd className="mt-2 text-xl font-semibold text-text-primary">{value}</dd>
             </div>
-          ))}
-        </dl>
+          ) : null}
+          {data.totalTrades === 0 ? (
+            <p className="text-sm text-text-secondary">
+              New participant: no trade history yet. Completed trades will build a trust score.
+            </p>
+          ) : null}
+          <dl className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {[
+              [translateCopy("ui.trust_score_2c7902e"), `${data.trustScore}%`],
+              [translateCopy("ui.rep_total_trades"), data.totalTrades],
+              [translateCopy("ui.completed"), data.completedTrades],
+              [translateCopy("ui.disputed"), data.disputedTrades],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-lg border border-border-default bg-bg-card p-4">
+                <dt className="text-xs text-text-muted">{label}</dt>
+                <dd className="mt-2 text-xl font-semibold text-text-primary">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </>
       ) : (
         <p role="status" className="text-sm text-text-secondary">{translateCopy("ui.reputation_loading")}</p>
       )}

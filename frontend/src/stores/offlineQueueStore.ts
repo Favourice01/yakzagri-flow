@@ -69,7 +69,7 @@ interface OfflineQueueState {
   replay: (
     executor: (action: QueuedAction) => Promise<void>,
     options?: { maxAttempts?: number; baseBackoffMs?: number },
-  ) => Promise<{ succeeded: string[]; failed: string[]; dropped: string[] }>;
+  ) => Promise<{ succeeded: string[]; failed: string[]; dropped: string[]; expired: string[] }>;
 }
 
 export const useOfflineQueueStore = create<OfflineQueueState>()(
@@ -116,8 +116,15 @@ export const useOfflineQueueStore = create<OfflineQueueState>()(
         const succeeded: string[] = [];
         const failed: string[] = [];
         const dropped: string[] = [];
+        const expired: string[] = [];
 
         for (const action of [...queue]) {
+          if (isQueuedActionExpired(action)) {
+            set((s) => ({ queue: s.queue.filter((a) => a.id !== action.id) }));
+            expired.push(action.id);
+            continue;
+          }
+
           if (action.attempts >= maxAttempts) {
             set((s) => ({ queue: s.queue.filter((a) => a.id !== action.id) }));
             dropped.push(action.id);
@@ -164,7 +171,7 @@ export const useOfflineQueueStore = create<OfflineQueueState>()(
             }
           }
         }
-        return { succeeded, failed, dropped };
+        return { succeeded, failed, dropped, expired };
       },
     }),
     {

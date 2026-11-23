@@ -28,6 +28,8 @@ export default function Step2Negotiation() {
     }, 500);
   };
 
+  const [activePreset, setActivePreset] = useState<number | null>(null);
+
   const handleBuyerRatio = (val: number) => {
     const clamped = Math.min(100, Math.max(0, val));
     update({ buyerRatio: clamped, sellerRatio: 100 - clamped });
@@ -112,18 +114,18 @@ export default function Step2Negotiation() {
           value={data.buyerRatio}
           aria-label={translateCopy("ui.buyer_loss_ratio_a0e1590")}
           aria-valuetext={`Buyer absorbs ${data.buyerRatio} percent, Seller absorbs ${data.sellerRatio} percent`}
-          onChange={(e) => handleBuyerRatio(parseInt(e.target.value))}
+          onChange={(e) => { setActivePreset(null); handleBuyerRatio(parseInt(e.target.value)); }}
           className="w-full accent-gold"
         />
 
         <div className="flex flex-wrap gap-2" role="group" aria-label="Preset loss ratios">
           {presetRatios.map((ratio) => {
-            const active = data.buyerRatio === ratio;
+            const active = activePreset === ratio;
             return (
               <button
                 key={ratio}
                 type="button"
-                onClick={() => handleBuyerRatio(ratio)}
+                onClick={() => { setActivePreset(ratio); handleBuyerRatio(ratio); }}
                 aria-pressed={active}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                   active
@@ -131,7 +133,7 @@ export default function Step2Negotiation() {
                     : "bg-bg-elevated text-text-secondary border-border-default hover:border-border-hover"
                 }`}
               >
-                {ratio}/{100 - ratio}
+                {ratio}:{100 - ratio}
               </button>
             );
           })}

@@ -46,6 +46,16 @@ if (typeof swScope.addEventListener === "function") {
     }
   });
 
+  // Background Sync: ask open pages to flush the trade queue (#424).
+  swScope.addEventListener("sync", (event) => {
+    if (event.tag !== "sync-trade-queue") return;
+    event.waitUntil(
+      swScope.clients.matchAll({ type: "window" }).then((clients) => {
+        clients.forEach((client) => client.postMessage({ type: "SYNC_TRADE_QUEUE" }));
+      })
+    );
+  });
+
   swScope.addEventListener("fetch", handleFetch);
 }
 
@@ -84,6 +94,12 @@ function handleFetch(event) {
   }
 
   const url = new URL(request.url);
+
+  // Commodity metadata rarely changes: serve the cached copy at once and refresh it in the background (#427).
+  if (url.pathname.startsWith("/api/v1/commodities")) {
+    event.respondWith(staleWhileRevalidate(request));
+    return;
+  }
 
   // App data routes (API & trades): network-first with cache fallback for GET,
   // while non-GET mutations (POST, OPTIONS, etc.) bypass caching and succeed online.

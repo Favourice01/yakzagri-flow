@@ -326,6 +326,18 @@ export function parseBackendError(error: ApiError): BackendErrorResponse | null 
 /**
  * Get user-friendly error information from an ApiError
  */
+/**
+ * Turns a raw "cannot pay" Stellar failure into reserve guidance (#419).
+ * New accounts must keep a 1 XLM base reserve plus 0.5 XLM per trustline.
+ * Returns null when the message is not a funding failure.
+ */
+export function describeReserveShortfall(message: string): string | null {
+  if (!/op_underfunded|tx_insufficient_balance|insufficient balance|underfunded/i.test(message)) {
+    return null;
+  }
+  return "This account needs at least 1 XLM for the base reserve, plus 0.5 XLM for each trustline. Add XLM to the account and try again. On testnet, the Stellar Laboratory account creator can fund it.";
+}
+
 export function getErrorInfo(error: ApiError | Error): {
   title: string;
   message: string;

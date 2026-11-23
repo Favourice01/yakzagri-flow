@@ -9,6 +9,8 @@ export { VaultSidebar } from "./VaultSidebar";
 export { ActionBar } from "./ActionBar";
 export { TimelineEventItem } from "./TimelineEventItem";
 export { TransactionTimeline } from "./TransactionTimeline";
+export { EscrowTimeline } from "./EscrowTimeline";
+export type { EscrowTimelineEvent, EscrowTimelineProps } from "./EscrowTimeline";
 export { TradeAmountRow } from "./TradeAmountRow";
 export { TradeListItem } from "./TradeListItem";
 export type { TradeListItemProps } from "./TradeListItem";

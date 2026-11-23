@@ -97,6 +97,39 @@ export const STELLAR_ASSETS: Record<string, AssetInfo> = {
  */
 export const DEFAULT_ASSET: AssetInfo = STELLAR_ASSETS.XLM;
 
+/** Horizon base URLs by network, for account lookups (#416). */
+const HORIZON_BASE_URLS = {
+  public: "https://horizon.stellar.org",
+  testnet: "https://horizon-testnet.stellar.org",
+} as const;
+
+/**
+ * True when `accountId` has an established trustline for `asset`. Native XLM and
+ * assets without an issuer need none. A missing account has no trustlines.
+ * Throws on other Horizon errors, so callers can say "could not verify" rather
+ * than "missing trustline" (#416).
+ */
+export async function hasTrustline(
+  accountId: string,
+  asset: AssetInfo,
+  network: keyof typeof HORIZON_BASE_URLS,
+): Promise<boolean> {
+  if (asset.type === "native" || !asset.issuer) return true;
+
+  const response = await fetch(`${HORIZON_BASE_URLS[network]}/accounts/${encodeURIComponent(accountId)}`);
+  if (response.status === 404) return false;
+  if (!response.ok) {
+    throw new Error(`Trustline lookup failed (${response.status})`);
+  }
+
+  const account = (await response.json()) as {
+    balances: Array<{ asset_type: string; asset_code?: string; asset_issuer?: string }>;
+  };
+  return account.balances.some(
+    (balance) => balance.asset_code === asset.code && balance.asset_issuer === asset.issuer,
+  );
+}
+
 /**
  * Get asset info by code, with fallback to default.
  *
@@ -293,4 +326,107 @@ export function validateAmountRange(
   }
   
   return { valid: true };
+}
+
+// ─── Path payment (strict-receive) quotes ────────────────────────────────────
+
+export const SLIPPAGE_OPTIONS = [0.5, 1, 2] as const;
+export type SlippageTolerance = (typeof SLIPPAGE_OPTIONS)[number];
+
+export interface PathQuote {
+  /** Amount of source asset required to receive `destinationAmount` */
+  sourceAmount: string;
+  destinationAmount: string;
+  /** Destination units received per 1 unit of source asset */
+  rate: number;
+  /** Maximum source amount to send after applying slippage (sendMax) */
+  maxSourceAmount: string;
+  /** Intermediate assets hopped through (excludes source and destination) */
+  hops: string[];
+}
+
+export function getHorizonUrl(): string {
+  const configured =
+    (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_HORIZON_URL?.trim()) || "";
+  if (configured) return configured.replace(/\/$/, "");
+  const network =
+    (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_STELLAR_NETWORK?.trim()) ||
+    "testnet";
+  return network === "mainnet" || network === "public"
+    ? "https://horizon.stellar.org"
+    : "https://horizon-testnet.stellar.org";
+}
+
+/** Apply slippage to the source amount (sendMax = source * (1 + pct/100)), 7dp, exact BigInt math. */
+export function applySlippage(sourceAmount: string, slippagePct: number, decimals = 7): string {
+  const stroops = BigInt(amountToStroops(sourceAmount, decimals));
+  const bps = BigInt(Math.round(slippagePct * 100));
+  const max = (stroops * (10000n + bps) + 9999n) / 10000n; // round up
+  return stroopsToAmount(max, decimals).replace(/,/g, "");
+}
+
+function assetParams(prefix: string, asset: AssetInfo): Record<string, string> {
+  if (asset.type === "native" || asset.code === "XLM") {
+    return { [`${prefix}_asset_type`]: "native" };
+  }
+  return {
+    [`${prefix}_asset_type`]: asset.code.length <= 4 ? "credit_alphanum4" : "credit_alphanum12",
+    [`${prefix}_asset_code`]: asset.code,
+    [`${prefix}_asset_issuer`]: asset.issuer ?? "",
+  };
+}
+
+/**
+ * Query Horizon `/paths/strict-receive` and return the cheapest path.
+ * Returns null when no path exists.
+ */
+export async function fetchStrictReceiveQuote(params: {
+  sourceAsset: AssetInfo;
+  destinationAsset: AssetInfo;
+  destinationAmount: string;
+  slippagePct: number;
+  horizonUrl?: string;
+  signal?: AbortSignal;
+  fetchImpl?: typeof fetch;
+}): Promise<PathQuote | null> {
+  const { sourceAsset, destinationAsset, destinationAmount, slippagePct, signal } = params;
+  const validation = validateAmountFormat(destinationAmount, destinationAsset.decimals);
+  if (!validation.valid) throw new Error(validation.error);
+
+  const qs = new URLSearchParams({
+    source_assets:
+      sourceAsset.type === "native" || sourceAsset.code === "XLM"
+        ? "native"
+        : `${sourceAsset.code}:${sourceAsset.issuer ?? ""}`,
+    destination_amount: destinationAmount.replace(/[,\s]/g, ""),
+    ...assetParams("destination", destinationAsset),
+  });
+  const base = params.horizonUrl ?? getHorizonUrl();
+  const res = await (params.fetchImpl ?? fetch)(`${base}/paths/strict-receive?${qs}`, { signal });
+  if (!res.ok) throw new Error(`Horizon path query failed (${res.status})`);
+
+  const body = (await res.json()) as {
+    _embedded?: {
+      records?: Array<{
+        source_amount: string;
+        destination_amount: string;
+        path: Array<{ asset_type: string; asset_code?: string }>;
+      }>;
+    };
+  };
+  const records = body._embedded?.records ?? [];
+  if (records.length === 0) return null;
+
+  const best = records.reduce((a, b) =>
+    BigInt(amountToStroops(b.source_amount, 7)) < BigInt(amountToStroops(a.source_amount, 7)) ? b : a,
+  );
+  const src = parseFloat(best.source_amount);
+  const dst = parseFloat(best.destination_amount);
+  return {
+    sourceAmount: best.source_amount,
+    destinationAmount: best.destination_amount,
+    rate: src > 0 ? dst / src : 0,
+    maxSourceAmount: applySlippage(best.source_amount, slippagePct),
+    hops: best.path.map((p) => (p.asset_type === "native" ? "XLM" : (p.asset_code ?? "?"))),
+  };
 }

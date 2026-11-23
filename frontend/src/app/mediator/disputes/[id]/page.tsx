@@ -1,5 +1,6 @@
 import dynamic from "next/dynamic";
 import { ManifestComparison } from "@/components/mediator/ManifestComparison";
+import { MediatorScratchpad } from "@/components/mediator/MediatorScratchpad";
 
 const MediatorPanelClient = dynamic(() => import("./MediatorPanelClient"), {
   ssr: false,
@@ -27,6 +28,10 @@ export default async function Page({
         {/* TODO: wire to backend once a dispatch/delivery report endpoint exists. */}
         <ManifestComparison dispatch={null} delivery={null} />
       </div>
+    </>
+  );
+}
+      <MediatorScratchpad disputeId={id} />
     </>
   );
 }

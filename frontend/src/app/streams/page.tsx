@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAdmin } from "@/hooks/useAdmin";
 import { api, ApiError, type AdminStreamSummary } from "@/lib/api";
 import { Breadcrumbs } from "@/components/ui";
+import { StreamSolvencyForm } from "@/components/streams/StreamSolvencyForm";
 
 export default function StreamsPage() {
   const { token, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -65,6 +66,8 @@ export default function StreamsPage() {
             </p>
           </div>
         </div>
+
+        <StreamSolvencyForm />
 
         {/* Coming soon placeholder */}
         {!canAccessAdmin ? (

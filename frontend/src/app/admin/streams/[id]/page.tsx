@@ -46,6 +46,7 @@ export default function AdminStreamManagementPage() {
   const [clawbackReasonCode, setClawbackReasonCode] = useState<ClawbackReasonCode | "">("");
   const [clawbackAuditTicket, setClawbackAuditTicket] = useState("");
   const [clawbackConfirmation, setClawbackConfirmation] = useState("");
+  const [clawbackModalOpen, setClawbackModalOpen] = useState(false);
   const [clawbackValidationErrors, setClawbackValidationErrors] = useState<string[]>([]);
 
   // Get asset info from stream data
@@ -95,10 +96,10 @@ export default function AdminStreamManagementPage() {
     if (!token || !clawbackInput.stroops) return;
 
     const validation = validateClawbackRequest({
-      resourceId: streamId,
+      targetId: streamId,
       reasonCode: clawbackReasonCode,
       auditTicket: clawbackAuditTicket,
-      confirmationPhrase: clawbackConfirmation,
+      confirmationPhrase: streamId,
     });
 
     if (!validation.valid) {
@@ -125,6 +126,27 @@ export default function AdminStreamManagementPage() {
             ? err.message
             : "Failed to preview clawback";
       setActionStatus(`Error: ${message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleExecuteClawback = async () => {
+    if (!token || !clawbackInput.stroops || clawbackConfirmation !== "CONFIRM") return;
+    setActionLoading(true);
+    try {
+      await api.streams.executeClawback(token, streamId, {
+        amount: clawbackInput.stroops,
+        reasonCode: clawbackReasonCode,
+        auditTicket: clawbackAuditTicket,
+        reason: `${clawbackReasonCode}: ${clawbackAuditTicket}`,
+      });
+      setActionStatus("Clawback executed successfully");
+      setClawbackModalOpen(false);
+      setClawbackConfirmation("");
+      setClawbackPreview(null);
+    } catch (err) {
+      setActionStatus(`Error: ${err instanceof Error ? err.message : "Failed to execute clawback"}`);
     } finally {
       setActionLoading(false);
     }
@@ -386,20 +408,6 @@ export default function AdminStreamManagementPage() {
                   />
                 </div>
 
-                <div>
-                  <label htmlFor="clawbackConfirmation" className="block text-sm font-medium text-text-primary mb-2">
-                    Type the stream ID to confirm
-                  </label>
-                  <input
-                    id="clawbackConfirmation"
-                    type="text"
-                    value={clawbackConfirmation}
-                    onChange={(e) => setClawbackConfirmation(e.target.value)}
-                    placeholder={streamId}
-                    className="w-full rounded-lg border border-border-default bg-bg-elevated px-4 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-gold focus:outline-none"
-                  />
-                </div>
-
                 {clawbackValidationErrors.length > 0 && (
                   <ul className="list-disc space-y-1 rounded-lg border border-status-danger/20 bg-status-danger/10 px-6 py-3 text-sm text-status-danger">
                     {clawbackValidationErrors.map((message) => (
@@ -415,6 +423,77 @@ export default function AdminStreamManagementPage() {
                 >
                   {actionLoading ? "Loading..." : "Preview Clawback"}
                 </button>
+
+                {clawbackPreview && (
+                  <button
+                    onClick={() => {
+                      setClawbackConfirmation("");
+                      setClawbackModalOpen(true);
+                    }}
+                    className="ml-3 rounded-lg bg-status-danger px-4 py-2 text-sm font-semibold text-white"
+                  >
+                    Execute Clawback
+                  </button>
+                )}
+
+                {clawbackModalOpen && clawbackPreview && (
+                  <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="clawback-modal-title"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+                  >
+                    <div className="w-full max-w-md space-y-4 rounded-2xl border border-border-default bg-card p-6">
+                      <h3 id="clawback-modal-title" className="text-lg font-semibold text-text-primary">
+                        Confirm irreversible clawback
+                      </h3>
+                      <dl className="space-y-2 text-sm text-text-secondary">
+                        <div>
+                          <dt className="text-text-muted">Clawback amount</dt>
+                          <dd data-testid="clawback-summary-amount" className="font-medium text-text-primary">
+                            {stroopsToAmount(clawbackPreview.requestedClawback, decimals)} {assetInfo.symbol}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-text-muted">Recipient address</dt>
+                          <dd className="break-all font-mono text-text-primary">{streamData?.recipient ?? "Unavailable"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-text-muted">Contract ID</dt>
+                          <dd className="break-all font-mono text-text-primary">{streamData?.contractId ?? streamId}</dd>
+                        </div>
+                      </dl>
+                      <div>
+                        <label htmlFor="clawbackConfirmation" className="mb-2 block text-sm font-medium text-text-primary">
+                          Type CONFIRM to enable the action
+                        </label>
+                        <input
+                          id="clawbackConfirmation"
+                          type="text"
+                          value={clawbackConfirmation}
+                          onChange={(e) => setClawbackConfirmation(e.target.value)}
+                          placeholder="CONFIRM"
+                          className="w-full rounded-lg border border-border-default bg-bg-elevated px-4 py-2 text-sm text-text-primary focus:border-gold focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-3">
+                        <button
+                          onClick={() => setClawbackModalOpen(false)}
+                          className="rounded-lg border border-border-default px-4 py-2 text-sm text-text-secondary"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => void handleExecuteClawback()}
+                          disabled={actionLoading || clawbackConfirmation !== "CONFIRM"}
+                          className="rounded-lg bg-status-danger px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Execute Clawback
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {clawbackPreview && (
                   <div className="mt-4 rounded-lg border border-border-default bg-bg-elevated p-4 space-y-2">

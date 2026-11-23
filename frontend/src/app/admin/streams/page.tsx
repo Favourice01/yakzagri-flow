@@ -2,7 +2,10 @@
 import { t as translateCopy } from "@/lib/i18n";
 
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { TruncatedKey } from "@/components/ui/TruncatedKey";
+import { filterStreams, STREAM_FILTER_STATUSES, type StreamFilterStatus } from "@/lib/api/adminStreamFilters";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { api, ApiError, AdminStreamSummary } from "@/lib/api";
@@ -14,32 +17,33 @@ import { SkeletonList } from "@/components/ui/SkeletonList";
 import { Button } from "@/components/ui/Button";
 import { StreamClawbackForm } from "@/components/admin/StreamClawbackForm";
 import { VirtualizedList } from "@/components/ui/VirtualizedList";
-import {
-  computeStreamHealth,
-  formatEstimatedDepletion,
-  type StreamHealthStatus,
-} from "@/lib/api/adminStreams";
+import { computeStreamHealth } from "@/lib/api/adminStreams";
 
 const PAGE_SIZE = 20;
 const STREAM_ROW_HEIGHT = 200;
 
-const HEALTH_BADGE_STYLES: Record<StreamHealthStatus, string> = {
-  streaming: "bg-status-success/10 text-status-success border-status-success/30",
-  near_depletion: "bg-status-warning/10 text-status-warning border-status-warning/30",
-  completed: "bg-bg-subtle text-text-secondary border-border-default",
-  paused: "bg-status-info/10 text-status-info border-status-info/30",
-};
-
-const HEALTH_BADGE_LABELS: Record<StreamHealthStatus, string> = {
-  streaming: "Streaming",
-  near_depletion: "Near Depletion <10%",
-  completed: "Completed",
-  paused: "Paused",
-};
-
 export default function AdminStreamsPage() {
   const { token, isAuthenticated } = useAuth();
   const isAdmin = useIsAdmin();
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const startDate = searchParams?.get("start") ?? "";
+  const endDate = searchParams?.get("end") ?? "";
+  const selectedStatuses = useMemo(
+    () => (searchParams?.get("status")?.split(",").filter(Boolean) ?? []) as StreamFilterStatus[],
+    [searchParams],
+  );
+
+  const updateFilters = (next: { start?: string; end?: string; status?: string[] }) => {
+    const qs = new URLSearchParams(searchParams?.toString() ?? "");
+    const set = (k: string, v: string) => (v ? qs.set(k, v) : qs.delete(k));
+    if (next.start !== undefined) set("start", next.start);
+    if (next.end !== undefined) set("end", next.end);
+    if (next.status !== undefined) set("status", next.status.join(","));
+    router.replace(`${pathname}${qs.toString() ? `?${qs}` : ""}`);
+  };
 
   const [streams, setStreams] = useState<AdminStreamSummary[]>([]);
   const [page, setPage] = useState(1);
@@ -86,6 +90,11 @@ export default function AdminStreamsPage() {
   useEffect(() => {
     fetchStreams();
   }, [fetchStreams]);
+
+  const filtered = useMemo(
+    () => filterStreams(streams, { startDate, endDate, statuses: selectedStatuses }),
+    [streams, startDate, endDate, selectedStatuses],
+  );
 
   if (!isAdmin) {
     return (
@@ -139,19 +148,64 @@ export default function AdminStreamsPage() {
         <h1 className="text-3xl font-bold text-text-primary">{translateCopy("ui.stream_admin_eeae618")}</h1>
       </div>
 
+      <div className="mb-4 flex flex-wrap items-end gap-4" data-testid="admin-stream-filters">
+        <label className="text-sm text-text-secondary">
+          Start date
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => updateFilters({ start: e.target.value })}
+            className="ml-2 rounded border border-border-default bg-bg-elevated px-2 py-1"
+          />
+        </label>
+        <label className="text-sm text-text-secondary">
+          End date
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => updateFilters({ end: e.target.value })}
+            className="ml-2 rounded border border-border-default bg-bg-elevated px-2 py-1"
+          />
+        </label>
+        <fieldset className="flex gap-3 text-sm text-text-secondary">
+          <legend className="sr-only">Status</legend>
+          {STREAM_FILTER_STATUSES.map(({ value, label }) => (
+            <label key={value} className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={selectedStatuses.includes(value)}
+                onChange={(e) =>
+                  updateFilters({
+                    status: e.target.checked
+                      ? [...selectedStatuses, value]
+                      : selectedStatuses.filter((x) => x !== value),
+                  })
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+        <p className="ml-auto text-sm text-text-primary" data-testid="admin-stream-summary">
+          {filtered.count} streams · total volume {filtered.totalVolume}
+        </p>
+      </div>
+
       <div className="overflow-x-auto rounded-lg border border-border-default">
         <VirtualizedList
-          items={streams}
+          items={filtered.items}
           rowHeight={STREAM_ROW_HEIGHT}
-          maxHeight={Math.min(streams.length * STREAM_ROW_HEIGHT, 600)}
+          maxHeight={Math.min(filtered.items.length * STREAM_ROW_HEIGHT, 600)}
           keyExtractor={(stream) => stream.streamId}
-          isEmpty={streams.length === 0}
+          isEmpty={filtered.items.length === 0}
           emptyState={
             <div className="text-center py-12 text-text-secondary">{translateCopy("ui.no_streams_to_display_91bc4d9")}</div>
           }
           renderItem={(stream) => {
             const isActionable = BigInt(stream.unclaimed || "0") > BigInt(0);
             const isOpen = activeStreamId === stream.streamId;
+            const health = computeStreamHealth(stream);
+            const isNearDepletion = health.status === "Near Depletion";
 
             return (
               <div
@@ -167,7 +221,7 @@ export default function AdminStreamsPage() {
                       </span>
                     </div>
                     <div className="text-sm text-text-secondary mb-1">
-                      {translateCopy("ui.recipient_ec17b25")}{" "}{stream.recipient}
+                      {translateCopy("ui.recipient_ec17b25")}{" "}<TruncatedKey value={stream.recipient} />
                     </div>
                     <div className="text-sm text-text-secondary">
                       {translateCopy("ui.remaining_vested_34f9f34")}{" "}<span className="font-mono text-text-primary">{stream.unclaimed}</span>
@@ -211,7 +265,7 @@ export default function AdminStreamsPage() {
                       />
                     </div>
                     <div className="mt-1 text-xs text-text-secondary">
-                      {formatEstimatedDepletion(health.estimatedDepletion)}
+                      {health.estimatedDepletionAt ? `Est. depletion ${new Date(health.estimatedDepletionAt).toLocaleDateString()}` : ""}
                     </div>
                   </div>
                 </div>

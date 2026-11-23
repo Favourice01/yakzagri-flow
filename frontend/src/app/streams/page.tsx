@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAdmin } from "@/hooks/useAdmin";
 import { api, ApiError, type AdminStreamSummary } from "@/lib/api";
 import { Breadcrumbs } from "@/components/ui";
+import { TruncatedKey } from "@/components/ui/TruncatedKey";
 
 export default function StreamsPage() {
   const { token, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -133,7 +134,7 @@ export default function StreamsPage() {
                   >
                     <span className="min-w-0">
                       <span className="block truncate font-mono text-sm text-text-primary">{stream.streamId}</span>
-                      <span className="mt-1 block truncate text-xs text-text-muted">{translateCopy("ui.stream_recipient", { recipient: stream.recipient })}</span>
+                      <span className="mt-1 block truncate text-xs text-text-muted">{translateCopy("ui.stream_recipient", { recipient: "" })}<TruncatedKey value={stream.recipient} /></span>
                     </span>
                     <span>
                       <span className="block text-sm text-text-primary">{translateCopy("ui.stream_progress_claimed", { progress })}</span>

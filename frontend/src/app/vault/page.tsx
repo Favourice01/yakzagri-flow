@@ -13,6 +13,7 @@ import {
   VaultFooter,
   VaultHero,
   VaultValueCard,
+  YieldChart,
 } from "@/components/vault";
 import { DriverManifestForm, LoadingState, type DriverManifestData } from "@/components/ui";
 import { CollateralBreakdown } from "@/components/vault/CollateralBreakdown";
@@ -333,6 +334,8 @@ export default function VaultPage() {
             </div>
           </div>
         </div>
+
+        <YieldChart data={[]} />
 
         {/* Loading skeleton */}
         {loading && (

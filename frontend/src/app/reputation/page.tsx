@@ -2,10 +2,13 @@
 import { t as translateCopy } from "@/lib/i18n";
 
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { api, ApiError, type ReputationResponse } from "@/lib/api";
+import { summarizeReputation, NEW_PARTICIPANT_DESCRIPTION } from "@/lib/api/reputation";
 import { RepScoreRing } from "@/components/ui/RepScoreRing";
+import { ReputationRadar } from "@/components/ui/ReputationRadar";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/Button";
 import { AlertCircle, RefreshCw, TrendingUp, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
@@ -104,6 +107,14 @@ export default function ReputationPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [trendWindow, setTrendWindow] = useState<"all" | "7d" | "30d" | "90d">("all");
+  const [searchAddress, setSearchAddress] = useState("");
+  const router = useRouter();
+
+  function handleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const address = searchAddress.trim();
+    if (address) router.push(`/reputation/${encodeURIComponent(address)}`);
+  }
 
   const fetchReputation = useCallback(async () => {
     if (!token) return;
@@ -188,13 +199,14 @@ export default function ReputationPage() {
     );
   }
 
-  const ringScore = (data.trustScore / 100) * 5;
+  const summary = summarizeReputation(data);
+  const ringScore = summary.ringScore;
 
   const scoreFactors = [
     {
       label: "Settlement Reliability",
       weight: "50%",
-      score: Math.min(100, Math.round(data.successRate)),
+      score: Math.min(100, Math.round(summary.successRate)),
     },
     {
       label: "Dispute Resolution Ratio",
@@ -237,7 +249,7 @@ export default function ReputationPage() {
     },
     {
       title: "Success Rate",
-      value: `${data.successRate}%`,
+      value: summary.isNewParticipant ? "—" : `${summary.successRate}%`,
       icon: <TrendingUp className="w-5 h-5 text-status-info" />,
     },
   ];
@@ -249,14 +261,42 @@ export default function ReputationPage() {
         <p className="text-text-secondary">
           {translateCopy("ui.your_trading_reputation_and_trus_302c8e8")}
         </p>
+        <form onSubmit={handleSearch} role="search" className="mt-4 flex gap-2 max-w-md">
+          <label htmlFor="reputation-address-search" className="sr-only">
+            Look up a farmer by Stellar address
+          </label>
+          <input
+            id="reputation-address-search"
+            type="text"
+            value={searchAddress}
+            onChange={(event) => setSearchAddress(event.target.value)}
+            placeholder="Stellar address (G...)"
+            className="flex-1 rounded-md border border-border-default bg-surface-1 px-3 py-2 text-sm text-text-primary"
+          />
+          <Button type="submit" variant="secondary">
+            View profile
+          </Button>
+        </form>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         <div className="bg-bg-elevated rounded-lg border border-border-default p-8 flex flex-col items-center gap-3">
           <RepScoreRing score={ringScore} size="xl" animated />
           <p className="text-sm text-text-secondary mt-2">{translateCopy("ui.trust_score_2c7902e")}</p>
-          <p className="text-3xl font-bold text-text-primary">{data.trustScore}</p>
-          <p className="text-xs text-text-muted">{translateCopy("ui.out_of_100_da0953a")}</p>
+          <p
+            className="text-3xl font-bold text-text-primary"
+            title={summary.tooltip ?? undefined}
+            data-testid="reputation-score-value"
+          >
+            {summary.scoreLabel}
+          </p>
+          {summary.isNewParticipant ? (
+            <p className="text-xs text-text-muted text-center max-w-[16rem]" data-testid="reputation-new-participant">
+              {NEW_PARTICIPANT_DESCRIPTION}. {summary.tooltip}
+            </p>
+          ) : (
+            <p className="text-xs text-text-muted">{translateCopy("ui.out_of_100_da0953a")}</p>
+          )}
         </div>
 
         <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -281,6 +321,15 @@ export default function ReputationPage() {
         data-testid="reputation-score-factors"
       >
         <h2 className="text-lg font-semibold text-text-primary mb-4">Score Breakdown Factors</h2>
+        <div className="mb-6">
+          <ReputationRadar
+            axes={scoreFactors.map((factor) => ({
+              label: factor.label,
+              score: factor.score,
+              description: `weight ${factor.weight}`,
+            }))}
+          />
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {scoreFactors.map((factor) => (
             <div

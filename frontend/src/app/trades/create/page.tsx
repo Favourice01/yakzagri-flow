@@ -72,7 +72,7 @@ const STEPS = [
   { index: 3, label: "Review" },
 ];
 
-function CreateTradeInner() {
+function CreateTradeInner({ preFilled }: { preFilled: boolean }) {
   const { step, resetTradeWizard } = useTrade();
   const [createdTrade, setCreatedTrade] = useState<{ tradeId: string; transactionHash: string } | null>(null);
 
@@ -101,6 +101,23 @@ function CreateTradeInner() {
             {translateCopy("ui.lock_agricultural_commodity_valu_6207352")}
           </p>
         </div>
+
+        {hasDraft && !createdTrade && (
+          <div
+            role="status"
+            className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-text-primary"
+          >
+            <span>You have an unfinished trade draft.</span>
+            <span className="flex gap-2">
+              <button type="button" onClick={resumeDraft} className="rounded-md bg-gold px-3 py-1 text-xs font-semibold text-text-inverse hover:bg-gold-hover">
+                Resume Draft
+              </button>
+              <button type="button" onClick={discardDraft} className="rounded-md border border-border-default px-3 py-1 text-xs font-medium text-text-secondary hover:border-border-hover">
+                Discard
+              </button>
+            </span>
+          </div>
+        )}
 
         {preFilled && (
           <div

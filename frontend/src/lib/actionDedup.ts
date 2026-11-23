@@ -63,3 +63,32 @@ export function _clearAllForTests(): void {
 }
 
 export const DEDUP_WINDOW = DEDUP_WINDOW_MS;
+
+/** Default window for dropping rapid repeat submissions (3s). */
+export const RAPID_SUBMIT_WINDOW_MS = 3_000;
+
+/**
+ * Instance-scoped dedup: `shouldProcess(key)` returns true once per window,
+ * dropping subsequent calls with the same key until the window elapses.
+ */
+export class ActionDedup {
+  private seen = new Map<string, number>();
+
+  private windowMs: number;
+
+  constructor(windowMs: number = RAPID_SUBMIT_WINDOW_MS) {
+    this.windowMs = windowMs;
+  }
+
+  shouldProcess(key: string): boolean {
+    const now = Date.now();
+    const last = this.seen.get(key);
+    if (last !== undefined && now - last <= this.windowMs) return false;
+    this.seen.set(key, now);
+    return true;
+  }
+
+  reset(): void {
+    this.seen.clear();
+  }
+}

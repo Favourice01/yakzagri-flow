@@ -4,6 +4,36 @@ import type { TradeResponse } from "@/lib/api/types";
 import { getCorrelationId, shouldDedup, registerAction } from "@/lib/actionDedup";
 import { getOrCreateIdempotencyKey, clearIdempotencyKey } from "@/lib/idempotency";
 
+/** Stellar assets use 7 decimal places; add amounts as scaled integers to avoid float drift. */
+const AMOUNT_SCALE = 7;
+
+function toScaled(value: string | number): bigint | null {
+  const str = String(value).trim();
+  if (!/^-?\d+(\.\d+)?$/.test(str)) return null;
+  const negative = str.startsWith("-");
+  const [whole, frac = ""] = str.replace("-", "").split(".");
+  const scaled = BigInt(whole + frac.slice(0, AMOUNT_SCALE).padEnd(AMOUNT_SCALE, "0"));
+  return negative ? -scaled : scaled;
+}
+
+function fromScaled(value: bigint): string {
+  const negative = value < BigInt(0);
+  const abs = (negative ? -value : value).toString().padStart(AMOUNT_SCALE + 1, "0");
+  const whole = abs.slice(0, -AMOUNT_SCALE);
+  const frac = abs.slice(-AMOUNT_SCALE).replace(/0+$/, "");
+  return `${negative ? "-" : ""}${whole}${frac ? `.${frac}` : ""}`;
+}
+
+/** Adds two decimal amount strings precisely. Returns null if either is not numeric. */
+export function addAmounts(a: string | number, b: string | number): string | null {
+  const x = toScaled(a);
+  const y = toScaled(b);
+  if (x === null || y === null) return null;
+  return fromScaled(x + y);
+}
+
+export type BalanceSyncState = "optimistic" | "confirmed";
+
 interface Filters {
   status?: string;
 }
@@ -30,6 +60,17 @@ interface TradeState {
     serverFn: () => Promise<void>,
     opts?: { correlationId?: string; idempotencyKey?: string },
   ) => Promise<{ correlationId: string; idempotencyKey: string }>;
+  /** Per-trade balance sync state after a collateral deposit. */
+  balanceSync: Record<string, BalanceSyncState>;
+  /** Re-fetches a single trade from the API and replaces it in the store. */
+  rehydrateTrade: (tradeId: string, token: string) => Promise<TradeResponse>;
+  /**
+   * Handles a deposit-confirmation event: optimistically adds the deposited
+   * collateral to the trade balance, then revalidates against the API so the
+   * confirmed server balance replaces the optimistic one (no page reload).
+   * Rolls back the optimistic balance if revalidation fails.
+   */
+  applyDepositConfirmation: (tradeId: string, depositAmount: string | number, token: string) => Promise<TradeResponse>;
   /** Unified dedup wrapper for any trade mutation — prevents double-submit window */
   withDedup: <T>(actionKey: string, fn: (ids: { correlationId: string; idempotencyKey: string }) => Promise<T>) => Promise<T | null>;
 }
@@ -42,6 +83,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   isLoading: false,
   error: null,
   pendingActions: {},
+  balanceSync: {},
 
   fetchTrades: async (token) => {
     set({ isLoading: true, error: null });
@@ -200,6 +242,51 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         delete n[actionKey];
         return { pendingActions: n };
       });
+    }
+  },
+
+  rehydrateTrade: async (tradeId, token) => {
+    const fresh = await tradesApi.get(token, tradeId);
+    set((s) => {
+      const exists = s.trades.some((t) => t.tradeId === tradeId);
+      return {
+        trades: exists
+          ? s.trades.map((t) => (t.tradeId === tradeId ? { ...t, ...fresh } : t))
+          : [fresh, ...s.trades],
+      };
+    });
+    return fresh;
+  },
+
+  applyDepositConfirmation: async (tradeId, depositAmount, token) => {
+    const snapshot = get().trades.find((t) => t.tradeId === tradeId);
+
+    if (snapshot) {
+      const optimistic = addAmounts(snapshot.amountCngn, depositAmount);
+      if (optimistic !== null) {
+        set((s) => ({
+          trades: s.trades.map((t) =>
+            t.tradeId === tradeId ? { ...t, amountCngn: optimistic as TradeResponse["amountCngn"] } : t,
+          ),
+          balanceSync: { ...s.balanceSync, [tradeId]: "optimistic" },
+        }));
+      }
+    }
+
+    try {
+      const confirmed = await get().rehydrateTrade(tradeId, token);
+      set((s) => ({ balanceSync: { ...s.balanceSync, [tradeId]: "confirmed" } }));
+      return confirmed;
+    } catch (err) {
+      set((s) => {
+        const nextSync = { ...s.balanceSync };
+        delete nextSync[tradeId];
+        return {
+          trades: snapshot ? s.trades.map((t) => (t.tradeId === tradeId ? snapshot : t)) : s.trades,
+          balanceSync: nextSync,
+        };
+      });
+      throw err;
     }
   },
 

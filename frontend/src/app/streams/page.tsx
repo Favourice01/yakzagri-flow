@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAdmin } from "@/hooks/useAdmin";
 import { api, ApiError, type AdminStreamSummary } from "@/lib/api";
 import { Breadcrumbs } from "@/components/ui";
-import { isStreamFinalized } from "@/components/organisms";
+import { STREAM_STATUS_TOKENS } from "@/lib/streams/statusTokens";
 
 export default function StreamsPage() {
   const { token, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -142,7 +142,9 @@ export default function StreamsPage() {
                         <span className="block h-full bg-status-success" style={{ width: `${progress}%` }} />
                       </span>
                     </span>
-                    <span className="rounded-full border border-border-default px-2.5 py-1 text-xs text-text-secondary">{isStreamFinalized(stream.status) ? "Stream Finalized" : stream.status}</span>
+                    <span className={`rounded-full border px-2.5 py-1 text-xs ${STREAM_STATUS_TOKENS[stream.status]}`}>
+                      {stream.status}
+                    </span>
                   </Link>
                 );
               })}

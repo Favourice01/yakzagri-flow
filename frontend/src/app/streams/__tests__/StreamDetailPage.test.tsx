@@ -83,6 +83,7 @@ describe("StreamsPage", () => {
     const detailLink = await screen.findByRole("link", { name: /stream-real-42/i });
     expect(detailLink).toHaveAttribute("href", "/streams/stream-real-42");
     expect(screen.getByText("25% claimed")).toBeInTheDocument();
+    expect(screen.getByText("ACTIVE")).toHaveClass("bg-emerald-100", "text-emerald-900");
     expect(screen.queryByText("View Example Stream")).not.toBeInTheDocument();
   });
 });

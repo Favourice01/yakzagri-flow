@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import {
     DriverManifestForm,
     normalizePhoneNumber,
@@ -164,6 +164,27 @@ describe('DriverManifestForm Component', () => {
             driverPhone: '+2348030000000',
             licensePlate: 'ABC 123',
         });
+    });
+
+    it('drops rapid duplicate submissions and disables the button while pending', async () => {
+        let resolve!: () => void;
+        const onComplete = jest.fn(() => new Promise<void>((r) => { resolve = r; }));
+        const { container } = render(<DriverManifestForm {...defaultProps} onComplete={onComplete} />);
+
+        fireEvent.change(screen.getByPlaceholderText('e.g. Amina Khalid'), { target: { value: 'John Doe' } });
+        fireEvent.change(screen.getByPlaceholderText('e.g. +234 803 000 0000'), { target: { value: '+2348030000000' } });
+        fireEvent.change(screen.getByPlaceholderText('e.g. GEG 1123 H'), { target: { value: 'ABC 123' } });
+
+        const form = container.querySelector('form')!;
+        fireEvent.submit(form);
+        fireEvent.submit(form);
+        fireEvent.submit(form);
+
+        expect(onComplete).toHaveBeenCalledTimes(1);
+        expect(screen.getByText('Submitting…').closest('button')).toBeDisabled();
+
+        resolve();
+        await waitFor(() => expect(defaultProps.onDismiss).toHaveBeenCalled());
     });
 
     it('calls onDismiss when cancel button is clicked', () => {

@@ -15,9 +15,17 @@ const nextConfig: NextConfig = {
         : false,
   },
   experimental: {
-    optimizePackageImports: ["@stellar/stellar-sdk"],
+    optimizePackageImports: ["@stellar/stellar-sdk", "lucide-react"],
   },
   turbopack: {},
+  // Serve responsive WebP/AVIF variants for commodity badges and network
+  // logos rendered via next/image (issue #468).
+  images: {
+    formats: ["image/avif", "image/webp"],
+    remotePatterns: [
+      { protocol: "https", hostname: "**" },
+    ],
+  },
   // Serve the mobile deep-link association files as JSON (issue #261).
   // Apple requires apple-app-site-association to have an application/json
   // content type and no file extension.
@@ -33,6 +41,16 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+};
+
+// CSP nonce support (issue #456): Next.js reads the per-request nonce from the
+// `x-nonce` request header set by middleware and applies it to the inline
+// scripts and font/style tags it emits. Enabling this flag makes Next.js
+// propagate that nonce onto its own emitted tags so they satisfy the
+// `script-src 'nonce-...' 'strict-dynamic'` policy.
+nextConfig.experimental = {
+  ...nextConfig.experimental,
+  nonce: true,
 };
 
 export default withBundleAnalyzer(nextConfig);

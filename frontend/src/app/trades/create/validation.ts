@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { StrKey } from "@stellar/stellar-sdk";
 import { t } from "@/lib/i18n";
+import { COMMODITY_UNITS } from "@/lib/domain-schemas/trade";
 
 export function isValidStellarAddress(val: string): boolean {
   const trimmed = val.trim();
@@ -76,7 +77,8 @@ export function validateDeliveryDeadline(
   return null;
 }
 
-export const step1Schema = z
+export function createStep1Schema() {
+  return z
   .object({
     commodity: z.string().min(1, "Select a commodity"),
     quantity: z.string().refine(
@@ -126,6 +128,7 @@ export const step1Schema = z
       }
     }
   });
+}
 
 export const step1Schema = createStep1Schema();
 
@@ -210,4 +213,27 @@ export function validateStep2(data: { buyerRatio: number; sellerRatio: number; d
     }
   }
   return errors;
+}
+
+// FRSC vehicle plate: 3 letters, 3 digits, 2 letters (e.g. ABC-123XY)
+export const FRSC_PLATE_REGEX = /^[A-Z]{3}-\d{3}[A-Z]{2}$/;
+export const FRSC_PLATE_ERROR = "Enter a valid plate number, e.g. ABC-123XY or AAA-123AA";
+
+/** Input mask: uppercases, strips invalid chars, inserts the dash after 3 letters. */
+export function formatPlateNumber(raw: string): string {
+  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const letters = clean.slice(0, 3).replace(/[^A-Z]/g, "");
+  if (letters.length < 3) return letters;
+  const rest = clean.slice(3);
+  const digits = rest.match(/^\d{0,3}/)![0];
+  const tail = digits.length === 3 ? rest.slice(3).replace(/[^A-Z]/g, "").slice(0, 2) : "";
+  return `${letters}-${digits}${tail}`;
+}
+
+export function isValidPlateNumber(val: string): boolean {
+  return FRSC_PLATE_REGEX.test(val.trim().toUpperCase());
+}
+
+export function validatePlateNumber(val: string): string | null {
+  return isValidPlateNumber(val) ? null : FRSC_PLATE_ERROR;
 }

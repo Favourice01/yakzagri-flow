@@ -68,6 +68,37 @@ body {
   .bg-bg-card {
     background-color: var(--surface-1);
   }
+
+  /*
+   * Stellar address typography
+   * ──────────────────────────
+   * Monospace + tight tracking for public keys (G...), contract IDs (C...),
+   * and transaction hashes so characters align uniformly in address tables.
+   * Inherits color from context, so it stays readable in light and dark modes.
+   */
+  .stellar-address {
+    font-family:
+      var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco,
+      Consolas, "Liberation Mono", "Courier New", monospace;
+    letter-spacing: -0.025em;
+    font-variant-ligatures: none;
+    font-feature-settings: "liga" 0, "calt" 0;
+  }
+}
+
+/*
+ * Inactive tab text — WCAG AA contrast (>= 4.5:1).
+ * text-zinc-500 on dark surfaces yields ~3.2:1 and fails AA; use zinc-400
+ * in dark mode while keeping the active tab's accent highlight distinct.
+ */
+@layer components {
+  .tab-inactive {
+    color: var(--color-zinc-500);
+  }
+
+  .dark .tab-inactive {
+    color: var(--color-zinc-400);
+  }
 }
 
 @keyframes shimmer {

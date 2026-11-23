@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
         : false,
   },
   experimental: {
-    optimizePackageImports: ["@stellar/stellar-sdk"],
+    optimizePackageImports: ["@stellar/stellar-sdk", "lucide-react"],
   },
   turbopack: {},
   // Serve responsive WebP/AVIF variants for commodity badges and network

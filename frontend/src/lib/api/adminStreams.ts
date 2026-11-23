@@ -125,10 +125,10 @@ export function computeStreamHealth(input: StreamHealthInput): StreamHealth {
 
   const rawStatus = (input.status ?? "").toString().toUpperCase();
   let status: StreamHealthStatus;
-  if (rawStatus && rawStatus !== "ACTIVE") {
-    status = "Paused";
-  } else if (unclaimed <= 0) {
+  if (unclaimed <= 0 || rawStatus === "COMPLETED") {
     status = "Completed";
+  } else if (rawStatus && rawStatus !== "ACTIVE") {
+    status = "Paused";
   } else if (percentRemaining < NEAR_DEPLETION_THRESHOLD) {
     status = "Near Depletion";
   } else {
@@ -141,6 +141,17 @@ export function computeStreamHealth(input: StreamHealthInput): StreamHealth {
     estimatedDepletionAt,
     status,
   };
+}
+
+export function formatEstimatedDepletion(timestamp: number | null): string {
+  if (timestamp === null) return "Est. completion unavailable";
+
+  const date = new Date(timestamp).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  return `Est. completion ${date}`;
 }
 
 export const adminStreamsApi = {

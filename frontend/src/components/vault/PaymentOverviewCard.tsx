@@ -7,6 +7,7 @@ import { CreditCard } from "lucide-react";
 import { BentoCard } from "@/components/ui/BentoCard";
 import { formatNumber } from "@/lib/i18n/format";
 import { getNgnExchangeRate } from "@/lib/exchangeRate";
+import { computeFee } from "@/lib/stroops";
 
 export interface VaultAllocationSlice {
   label: string;
@@ -42,7 +43,7 @@ const LINE_ITEMS: CostLineItem[] = [
   {
     label: "EziAgric Platform Fee (1%)",
     getValue: (total, currency, rate) => {
-      const fee = parseFloat((total * 0.01).toFixed(2));
+      const { fee } = computeFee(total);
       return currency === "NGN"
         ? `₦${formatNumber(fee * rate, { maximumFractionDigits: 2 })}`
         : `${formatNumber(fee)} cNGN`;
@@ -51,7 +52,7 @@ const LINE_ITEMS: CostLineItem[] = [
   {
     label: "Net Payout",
     getValue: (total, currency, rate) => {
-      const net = parseFloat((total - total * 0.01).toFixed(2));
+      const { net } = computeFee(total);
       return currency === "NGN"
         ? `₦${formatNumber(net * rate, { maximumFractionDigits: 2 })}`
         : `${formatNumber(net)} cNGN`;

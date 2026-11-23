@@ -21,6 +21,21 @@ import { computeStreamHealth } from "@/lib/api/adminStreams";
 
 const PAGE_SIZE = 20;
 const STREAM_ROW_HEIGHT = 200;
+import { STREAM_HEALTH_TOKENS, STREAM_STATUS_TOKENS } from "@/lib/streams/statusTokens";
+import {
+  computeStreamHealth,
+  formatEstimatedDepletion,
+  type StreamHealthStatus,
+} from "@/lib/api/adminStreams";
+
+const PAGE_SIZE = 20;
+const STREAM_ROW_HEIGHT = 200;
+const HEALTH_BADGE_LABELS: Record<StreamHealthStatus, string> = {
+  Streaming: "Streaming",
+  "Near Depletion": "Near Depletion <10%",
+  Completed: "Completed",
+  Paused: "Paused",
+};
 
 export default function AdminStreamsPage() {
   const { token, isAuthenticated } = useAuth();
@@ -205,19 +220,40 @@ export default function AdminStreamsPage() {
             const isActionable = BigInt(stream.unclaimed || "0") > BigInt(0);
             const isOpen = activeStreamId === stream.streamId;
             const health = computeStreamHealth(stream);
+            const health = computeStreamHealth({
+              totalVested: stream.claimed,
+              unclaimed: stream.unclaimed,
+              createdAt: stream.createdAt,
+              updatedAt: stream.updatedAt,
+              status: stream.status,
+            });
+            const healthData = health.status.toLowerCase().replace(" ", "-");
             const isNearDepletion = health.status === "Near Depletion";
 
             return (
               <div
                 className="p-6 bg-bg-elevated rounded-lg border border-border-default mb-4 min-w-[640px]"
                 data-testid={`stream-row-${stream.streamId}`}
+                data-health={healthData}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-2">
                       <span className="font-mono text-sm text-text-primary">{stream.streamId}</span>
-                      <span className="text-xs uppercase tracking-wide text-text-secondary">
+                      <span
+                        className={`rounded-full border px-2.5 py-1 text-xs uppercase tracking-wide ${
+                          STREAM_STATUS_TOKENS[stream.status]
+                        }`}
+                      >
                         {stream.status}
+                      </span>
+                      <span
+                        className={`rounded-full border px-2.5 py-1 text-xs ${
+                          STREAM_HEALTH_TOKENS[health.status]
+                        }`}
+                        data-health={healthData}
+                      >
+                        {HEALTH_BADGE_LABELS[health.status]}
                       </span>
                     </div>
                     <div className="text-sm text-text-secondary mb-1">
@@ -266,6 +302,7 @@ export default function AdminStreamsPage() {
                     </div>
                     <div className="mt-1 text-xs text-text-secondary">
                       {health.estimatedDepletionAt ? `Est. depletion ${new Date(health.estimatedDepletionAt).toLocaleDateString()}` : ""}
+                      {formatEstimatedDepletion(health.estimatedDepletionAt)}
                     </div>
                   </div>
                 </div>

@@ -181,6 +181,9 @@ function evictLRU(): void {
  * Write a value into the cache under domain + key.
  * Evicts expired entries first, then enforces quota by evicting LRU entries until enough space exists.
  */
+// Writes go to localStorage, which is synchronous, so two callers can never
+// interleave inside one write. No IndexedDB transactions are opened here, so
+// TransactionInactiveError cannot occur from this module (#423).
 export function cacheWrite<T>(
   domain: CacheDomain,
   key: string,
@@ -320,4 +323,35 @@ export function purgeSensitiveStorage(): void {
  */
 export function readCachedTradesList<T>(): CacheReadResult<T> {
   return cacheRead<T>("trades_list", "all");
+}
+
+// ─── Large blob quota check ─────────────────────────────────────────────────
+
+/** Blobs above this size (for example dispute videos) need a quota check first (#429). */
+export const LARGE_BLOB_BYTES = 10 * 1024 * 1024; // 10 MB
+
+export type BlobQuotaCheck =
+  | { ok: true }
+  | { ok: false; reason: "insufficient_quota"; availableBytes: number };
+
+/**
+ * Check whether a large blob fits in origin storage before writing it.
+ * Small blobs, and browsers without storage estimates, pass. When the check
+ * fails, callers should ask the user to compress the file or upload it
+ * directly rather than attempting the write.
+ */
+export async function checkBlobQuota(sizeBytes: number): Promise<BlobQuotaCheck> {
+  if (sizeBytes <= LARGE_BLOB_BYTES) return { ok: true };
+  if (typeof navigator === "undefined" || !navigator.storage?.estimate) return { ok: true };
+
+  try {
+    const { quota = 0, usage = 0 } = await navigator.storage.estimate();
+    const availableBytes = Math.max(0, quota - usage);
+    if (availableBytes < sizeBytes) {
+      return { ok: false, reason: "insufficient_quota", availableBytes };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: true };
+  }
 }

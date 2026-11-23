@@ -96,6 +96,7 @@ describe("AdminStreamsPage", () => {
       expect(screen.getByText("stream-abc-123")).toBeInTheDocument();
     });
     expect(screen.getByText("7500")).toBeInTheDocument();
+    expect(screen.getByText("ACTIVE")).toHaveClass("bg-emerald-100", "text-emerald-900");
     expect(mockTrackAdminEvent).toHaveBeenCalledWith("admin_streams_page_view", "success", { page: 1 });
   });
 

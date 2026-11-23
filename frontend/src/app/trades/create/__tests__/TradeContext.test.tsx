@@ -354,3 +354,22 @@ describe('TradeContext', () => {
         });
     });
 });
+
+describe("sessionStorage rehydration", () => {
+  it("restores draft from sessionStorage and clears it on reset", async () => {
+    const { render, screen, act } = await import("@testing-library/react");
+    const React = await import("react");
+    const { TradeProvider, useTrade, SESSION_KEY } = await import("../TradeContext");
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ data: { notes: "kept" }, step: 2 }));
+    let ctx: ReturnType<typeof useTrade>;
+    function Probe() {
+      ctx = useTrade();
+      return React.createElement("span", null, ctx.data.notes);
+    }
+    render(React.createElement(TradeProvider, null, React.createElement(Probe)));
+    expect(screen.getByText("kept")).toBeTruthy();
+    expect(ctx!.step).toBe(2);
+    act(() => ctx!.resetTradeWizard());
+    expect(sessionStorage.getItem(SESSION_KEY)).toBeNull();
+  });
+});

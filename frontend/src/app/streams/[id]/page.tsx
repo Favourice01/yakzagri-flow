@@ -8,6 +8,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAdmin } from "@/hooks/useAdmin";
 import { api, type StreamRemainingResponse, ApiError } from "@/lib/api";
 import { Breadcrumbs, LoadingState, ErrorState } from "@/components/ui";
+import {
+  StreamActions,
+  StreamMilestones,
+  StreamTicker,
+  buildDefaultMilestones,
+} from "@/components/organisms";
 import { StalenessIndicator } from "@/components/ui/StalenessIndicator";
 import {
   getAssetInfo,
@@ -103,6 +109,15 @@ export default function StreamDetailPage() {
     return totalVested / durationSeconds;
   }, [startTime, endTime, totalVested]);
 
+  const derivedStatus = totalVested > 0 && claimed >= totalVested ? "COMPLETED" : "ACTIVE";
+  const milestones = useMemo(
+    () =>
+      startTime && endTime && endTime > startTime
+        ? buildDefaultMilestones(startTime, endTime, claimedPercent)
+        : [],
+    [startTime, endTime, claimedPercent],
+  );
+
   const formatTimestamp = (value: number | null) => {
     if (!value) return "—";
     return new Date(value * 1000).toLocaleString();
@@ -170,6 +185,9 @@ export default function StreamDetailPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {canAccessAdmin && streamData && (
+              <StreamActions status={derivedStatus} cancelHref={`/admin/streams/${streamId}`} />
+            )}
             {lastFetched && <StalenessIndicator lastUpdated={lastFetched} />}
             <button
               type="button"
@@ -279,6 +297,17 @@ export default function StreamDetailPage() {
                 </span>
               </div>
             </div>
+
+            {startTime && endTime && endTime > startTime && (
+              <StreamTicker
+                totalAmount={totalVested}
+                startTime={startTime}
+                endTime={endTime}
+                format={(v) => `${stroopsToAmount(Math.round(v), decimals)} ${assetInfo.symbol}`}
+              />
+            )}
+
+            {milestones.length > 0 && <StreamMilestones milestones={milestones} />}
 
             {/* Stream timeline & flow rate */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">

@@ -7,6 +7,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { clsx } from "clsx";
 import { FormField } from "@/components/ui/FormField";
 import { Icon } from "@/components/ui/Icon";
+import { ActionDedup, RAPID_SUBMIT_WINDOW_MS } from "@/lib/actionDedup";
 
 export interface DriverManifestData {
   driverName: string;
@@ -46,7 +47,7 @@ export function isValidLicensePlate(raw: string): boolean {
 
 interface DriverManifestFormProps {
   isOpen: boolean;
-  onComplete: (data: DriverManifestData) => void;
+  onComplete: (data: DriverManifestData) => void | Promise<void>;
   onDismiss?: () => void;
 }
 
@@ -56,6 +57,9 @@ export function DriverManifestForm({ isOpen, onComplete, onDismiss }: DriverMani
   const [driverPhone, setDriverPhone] = useState("");
   const [licensePlate, setLicensePlate] = useState("");
   const [touched, setTouched] = useState<{ phone?: boolean; plate?: boolean }>({});
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
+  const dedupRef = useRef(new ActionDedup(RAPID_SUBMIT_WINDOW_MS));
 
   const isPhoneValid = isValidPhoneNumber(driverPhone);
   const isPlateValid = isValidLicensePlate(licensePlate);
@@ -74,7 +78,7 @@ export function DriverManifestForm({ isOpen, onComplete, onDismiss }: DriverMani
         ? "Please enter a valid license plate (e.g. GEG 1123 H)"
         : undefined;
 
-  const submitEnabled = driverName.trim() !== "" && isPhoneValid && isPlateValid;
+  const submitEnabled = driverName.trim() !== "" && isPhoneValid && isPlateValid && !pending;
 
   useEffect(() => {
     const bodyOverflow = document.body.style.overflow;
@@ -88,9 +92,9 @@ export function DriverManifestForm({ isOpen, onComplete, onDismiss }: DriverMani
     };
   }, [isOpen]);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSubmitAttempted(true);
+    if (pendingRef.current) return;
     const form = formRef.current;
 
     if (!form) {
@@ -103,18 +107,50 @@ export function DriverManifestForm({ isOpen, onComplete, onDismiss }: DriverMani
       return;
     }
 
-    onComplete({
-      driverName: driverName.trim(),
-      driverPhone: normalizedPhone,
-      licensePlate: licensePlate.trim(),
-    });
+    if (!dedupRef.current.shouldProcess("driver-manifest-submit")) return;
 
-    setDriverName("");
-    setDriverPhone("");
-    setLicensePlate("");
-    setTouched({});
+    pendingRef.current = true;
+    setPending(true);
 
-    onDismiss?.();
+    const finish = () => {
+      setDriverName("");
+      setDriverPhone("");
+      setLicensePlate("");
+      setTouched({});
+      onDismiss?.();
+    };
+    const release = () => {
+      pendingRef.current = false;
+      setPending(false);
+    };
+
+    let result: void | Promise<void>;
+    try {
+      result = onComplete({
+        driverName: driverName.trim(),
+        driverPhone: normalizedPhone,
+        licensePlate: licensePlate.trim(),
+      });
+    } catch (err) {
+      dedupRef.current.reset();
+      release();
+      throw err;
+    }
+
+    if (result && typeof (result as Promise<void>).then === "function") {
+      try {
+        await result;
+        finish();
+      } catch {
+        // Allow retry immediately after a failed submission.
+        dedupRef.current.reset();
+      } finally {
+        release();
+      }
+    } else {
+      finish();
+      release();
+    }
   };
 
   const handleClose = () => {
@@ -191,7 +227,7 @@ export function DriverManifestForm({ isOpen, onComplete, onDismiss }: DriverMani
                   onChange={(event) => setLicensePlate(event.target.value)}
                   onBlur={() => setTouched((prev) => ({ ...prev, plate: true }))}
                   placeholder={translateCopy("ui.e_g_geg_1123_h_814141c")}
-                  aria-invalid={showPlateError}
+                  aria-invalid={Boolean(plateError)}
                   required
                 />
               </FormField>
@@ -207,9 +243,10 @@ export function DriverManifestForm({ isOpen, onComplete, onDismiss }: DriverMani
                 <button
                   type="submit"
                   disabled={!submitEnabled}
+                  aria-busy={pending}
                   className="flex-1 px-4 py-2 rounded-lg bg-gold text-text-inverse font-medium hover:bg-gold-hover transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {translateCopy("ui.submit_manifest_13f57ee")}
+                  {pending ? "Submitting…" : translateCopy("ui.submit_manifest_13f57ee")}
                 </button>
               </div>
             </form>

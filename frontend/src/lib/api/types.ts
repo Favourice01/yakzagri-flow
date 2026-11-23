@@ -28,6 +28,8 @@ export interface TradeResponse {
   tradeId: string;
   buyerAddress: string;
   sellerAddress: string;
+  mediatorAddress?: string | null;
+  mediatorAllowlist?: string[] | null;
   amountCngn: TradeMoneyAmount;
   buyerLossBps: number;
   sellerLossBps: number;
@@ -36,6 +38,10 @@ export interface TradeResponse {
   updatedAt: string;
   eta?: string;
   carrier?: string;
+  /** ISO timestamp the goods were dispatched. */
+  dispatchedAt?: string;
+  /** Estimated dispatch-to-delivery duration from the trade contract. */
+  estimatedTransitHours?: number;
 }
 
 export interface TradeListResponse {
@@ -271,4 +277,6 @@ export interface ReputationResponse {
   /** Verified counterparty endorsements (requires >= 3 settled escrows). */
   endorsementCount?: number;
   history: ReputationEvent[];
+  /** Verified counterparty endorsements. Absent when the API does not report them (#408). */
+  endorsementCount?: number | null;
 }

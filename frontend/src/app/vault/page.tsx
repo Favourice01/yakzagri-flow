@@ -13,11 +13,14 @@ import {
   VaultFooter,
   VaultHero,
   VaultValueCard,
+  YieldChart,
 } from "@/components/vault";
 import { DriverManifestForm, LoadingState, type DriverManifestData } from "@/components/ui";
+import { CollateralBreakdown } from "@/components/vault/CollateralBreakdown";
 import { useAuth } from "@/hooks/useAuth";
 import { formatDate } from "@/lib/i18n";
 import { useWallet } from "@/hooks/useWallet";
+import { BalanceDisplay } from "@/components/wallet/BalanceDisplay";
 import { formatDateTime, formatNumber } from "@/lib/i18n/format";
 import {
   api,
@@ -66,7 +69,7 @@ export default function VaultPage() {
     authenticate,
   } = useAuth();
 
-  const { balance, asset } = useWallet();
+  const { balance, asset, loading: balanceLoading, refetch: refetchBalance } = useWallet();
 
   const [stats, setStats] = useState<TradeStatsResponse | null>(null);
   const [recentTrades, setRecentTrades] = useState<TradeListResponse | null>(null);
@@ -77,11 +80,13 @@ export default function VaultPage() {
   const [manifestData, setManifestData] = useState<DriverManifestData | null>(null);
   const [manifestStatus, setManifestStatus] = useState<string | null>(null);
 
-  const fetchVaultData = useCallback(async () => {
+  const fetchVaultData = useCallback(async (silent = false) => {
     if (!token) return;
 
-    setLoading(true);
-    setError(null);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
 
     try {
       const [statsData, tradesData] = await Promise.all([
@@ -90,18 +95,66 @@ export default function VaultPage() {
       ]);
       setStats(statsData);
       setRecentTrades(tradesData);
+      setOffline(false);
+      setUsingCache(false);
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ stats: statsData, trades: tradesData }));
+      } catch {}
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load vault data");
+      if (!silent) setError(err instanceof Error ? err.message : "Failed to load vault data");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [token]);
+
+  // Silent 60s poll; suspended while the tab is hidden, refreshed on re-focus.
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer === null) timer = setInterval(() => void fetchVaultData(true), 60_000);
+    };
+    const stop = () => {
+      if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        void fetchVaultData(true);
+        start();
+      }
+    };
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [isAuthenticated, token, fetchVaultData]);
 
   useEffect(() => {
     if (isAuthenticated && token) {
       void fetchVaultData();
     }
   }, [isAuthenticated, token, fetchVaultData]);
+
+  useEffect(() => {
+    const goOffline = () => setOffline(true);
+    const goOnline = () => {
+      setOffline(false);
+      void fetchVaultData();
+    };
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online", goOnline);
+    return () => {
+      window.removeEventListener("offline", goOffline);
+      window.removeEventListener("online", goOnline);
+    };
+  }, [fetchVaultData]);
 
   const walletStatus = authLoading
     ? "Checking wallet"
@@ -134,6 +187,10 @@ export default function VaultPage() {
         metadata: "Connect wallet to view",
       },
     ];
+
+  const lockedCngn = (recentTrades?.items ?? [])
+    .filter((trade) => ["FUNDED", "DELIVERED", "DISPUTED"].includes(trade.status))
+    .reduce((sum, trade) => sum + (Number.parseFloat(trade.amountCngn) || 0), 0);
 
   const isEmpty =
     !loading && isAuthenticated && stats?.totalTrades === 0 && recentTrades?.items.length === 0;
@@ -266,9 +323,13 @@ export default function VaultPage() {
                 {shortAddress ?? "No connected wallet"}
               </p>
               {isAuthenticated && balance !== null && (
-                <p className="mt-1 text-xs text-text-muted">
-                  {translateCopy("ui.balance_802dc02")}{" "}<span className="font-medium text-text-secondary">{balance} {asset}</span>
-                </p>
+                <BalanceDisplay
+                  label={translateCopy("ui.balance_802dc02")}
+                  balance={balance}
+                  asset={asset}
+                  loading={balanceLoading}
+                  onRefresh={() => void refetchBalance()}
+                />
               )}
             </div>
 
@@ -293,6 +354,8 @@ export default function VaultPage() {
           </div>
         </div>
 
+        <YieldChart data={[]} />
+
         {/* Loading skeleton */}
         {loading && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4" aria-busy="true" aria-label={translateCopy("ui.loading_vault_data_8cfa64c")}>
@@ -305,10 +368,19 @@ export default function VaultPage() {
 
         {/* Error state with retry */}
         {error && !loading && (
-          <div className="rounded-lg border border-status-danger/20 bg-status-danger/10 px-4 py-5 text-center">
-            <p className="text-sm text-status-danger">{error}</p>
+          <div
+            role="alert"
+            className="rounded-lg border border-status-danger/20 bg-status-danger/10 px-4 py-5 text-center"
+          >
+            <p className="text-sm text-status-danger">
+              {offline
+                ? usingCache
+                  ? "You're offline. Showing last known balances."
+                  : "You're offline. Reconnect to load your vault balances."
+                : error}
+            </p>
             <button
-              onClick={() => void fetchVaultData()}
+              onClick={() => void fetchVaultData(false)}
               className="mt-3 rounded-lg border border-border-default px-4 py-1.5 text-xs font-medium text-text-secondary hover:border-border-hover hover:text-text-primary transition-colors"
             >
               {translateCopy("common.retry")}
@@ -356,6 +428,11 @@ export default function VaultPage() {
                 </div>
               )}
             </div>
+
+            <CollateralBreakdown
+              available={Number.parseFloat(balance ?? "0") || 0}
+              locked={lockedCngn}
+            />
 
             <VaultHero
               escrowId={escrowId}

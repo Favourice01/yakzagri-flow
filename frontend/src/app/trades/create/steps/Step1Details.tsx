@@ -10,9 +10,10 @@ import {
   formatRelativeDeliveryWindow,
 } from "../validation";
 import { formatCurrencyAmount, getCurrencyInfo } from "@/lib/currency";
+import { getShelfLifeWarning } from "@/lib/trades/shelfLife";
 import { COMMODITY_UNITS } from "@/lib/domain-schemas/trade";
 
-const COMMODITIES = ["Maize", "Rice", "Sorghum", "Millet", "Cassava", "Yam", "Groundnut", "Soybean"];
+const COMMODITIES = ["Maize", "Rice", "Sorghum", "Millet", "Cassava", "Yam", "Groundnut", "Soybean", "Tomato", "Leafy Greens", "Pepper", "Okra"];
 const UNITS = COMMODITY_UNITS;
 
 const NIGERIAN_STATES = [
@@ -163,34 +164,51 @@ function SearchableSelect({ id, label, value, options, placeholder, disabled, on
 
 export default function Step1Details() {
   const { data, update, setStep } = useTrade();
+  const tipId = useId();
+  const [avgPrice, setAvgPrice] = useState<number | null>(null);
+  const [tipOpen, setTipOpen] = useState(false);
+
+  useEffect(() => {
+    setAvgPrice(null);
+    if (!data.commodity) return;
+    const ctrl = new AbortController();
+    fetch(`/api/market/average-price?commodity=${encodeURIComponent(data.commodity)}&days=7`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const v = Number(j?.weightedAverage);
+        setAvgPrice(Number.isFinite(v) && v > 0 ? v : null);
+      })
+      .catch(() => setAvgPrice(null));
+    return () => ctrl.abort();
+  }, [data.commodity]);
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
-  const qty = parseFloat(data.quantity);
   const amount = parseFloat(data.pricePerUnit);
-  const totalValue = !isNaN(qty) && !isNaN(amount) ? qty * amount : NaN;
-  const unitPrice = !isNaN(totalValue) && qty > 0 ? totalValue / qty : NaN;
+  const totalValue = calculateTradeTotal(data.quantity, data.pricePerUnit);
+  const unitPrice = calculateUnitPrice(totalValue, data.quantity);
 
-  const totalDisplay = isNaN(totalValue)
-    ? "—"
-    : formatCurrencyAmount(totalValue, data.currency, {
-        showCode: true,
-        grouping: true,
-      });
+  const totalDisplay = formatCurrencyAmount(totalValue, data.currency, {
+    showCode: true,
+    grouping: true,
+  });
 
-  const unitPriceDisplay = isNaN(unitPrice)
+  const unitPriceDisplay = unitPrice <= 0
     ? "—"
     : formatCurrencyAmount(unitPrice, data.currency, {
         showCode: true,
         grouping: true,
       });
 
-  const isQtyValid = data.quantity !== "" && !isNaN(qty) && qty > 0;
+  const isQtyValid = isPositiveQuantity(data.quantity);
   const isPriceValid = data.pricePerUnit !== "" && !isNaN(amount) && amount > 0;
   const isUnitValid = data.unit !== "";
   const isAddressValid = isValidStellarAddress(data.sellerAddress);
   const deliveryDeadlineError = validateDeliveryDeadline(data.deliveryDeadline);
   const deliveryDeadlineSummary = formatRelativeDeliveryWindow(data.deliveryDeadline);
+
+  const shelfLifeWarning = getShelfLifeWarning(data.commodity, data.deliveryDeadline);
 
   const valid =
     data.commodity !== "" &&
@@ -216,7 +234,7 @@ export default function Step1Details() {
     setTouched(allTouched);
     const errs = validateStep1(data as unknown as Record<string, unknown>);
     setErrors(errs);
-    if (Object.keys(errs).length === 0) {
+    if (Object.keys(errs).length === 0 && isQtyValid) {
       setStep(2);
     }
   };
@@ -276,6 +294,30 @@ export default function Step1Details() {
       <div className="flex gap-4">
         <div className="flex flex-col gap-1 flex-1">
           <label htmlFor="price-per-unit" className="text-sm text-text-secondary">{translateCopy("ui.price_per_unit_ngn_bd3ba08")}</label>
+          <span className="relative inline-block">
+            <button
+              type="button"
+              aria-label="Recent average price info"
+              aria-describedby={tipId}
+              onFocus={() => setTipOpen(true)}
+              onBlur={() => setTipOpen(false)}
+              onMouseEnter={() => setTipOpen(true)}
+              onMouseLeave={() => setTipOpen(false)}
+              className="text-xs text-text-muted border border-border-default rounded-full w-5 h-5"
+            >
+              i
+            </button>
+            <span
+              id={tipId}
+              role="tooltip"
+              hidden={!tipOpen}
+              className="absolute z-10 left-0 top-6 w-56 rounded-md bg-bg-elevated border border-border-default px-3 py-2 text-xs text-text-secondary"
+            >
+              {avgPrice !== null
+                ? `7-day weighted average: ${formatCurrencyAmount(avgPrice, data.currency)}`
+                : "No recent trades"}
+            </span>
+          </span>
           <input
             id="price-per-unit"
             type="number"
@@ -360,6 +402,17 @@ export default function Step1Details() {
         />
         {deliveryDeadlineSummary && !deliveryDeadlineError && (
           <p className="text-xs text-text-secondary">{deliveryDeadlineSummary}</p>
+        )}
+        {shelfLifeWarning && (
+          <div
+            role="alert"
+            data-testid="perishable-warning"
+            className="mt-2 rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-status-warning"
+          >
+            {data.commodity} is perishable: this delivery window (~{Math.ceil(shelfLifeWarning.durationDays)} days) exceeds
+            the recommended {shelfLifeWarning.limitDays}-day transit shelf-life. Buyer and seller should review
+            refrigeration terms before continuing.
+          </div>
         )}
         {errors.deliveryDeadline && touched.deliveryDeadline && <p role="alert" aria-live="polite" className="text-status-danger text-xs mt-1">{errors.deliveryDeadline}</p>}
       </div>

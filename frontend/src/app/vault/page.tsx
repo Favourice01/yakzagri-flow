@@ -95,6 +95,11 @@ export default function VaultPage() {
       ]);
       setStats(statsData);
       setRecentTrades(tradesData);
+      setOffline(false);
+      setUsingCache(false);
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ stats: statsData, trades: tradesData }));
+      } catch {}
     } catch (err) {
       if (!silent) setError(err instanceof Error ? err.message : "Failed to load vault data");
     } finally {
@@ -136,6 +141,20 @@ export default function VaultPage() {
       void fetchVaultData();
     }
   }, [isAuthenticated, token, fetchVaultData]);
+
+  useEffect(() => {
+    const goOffline = () => setOffline(true);
+    const goOnline = () => {
+      setOffline(false);
+      void fetchVaultData();
+    };
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online", goOnline);
+    return () => {
+      window.removeEventListener("offline", goOffline);
+      window.removeEventListener("online", goOnline);
+    };
+  }, [fetchVaultData]);
 
   const walletStatus = authLoading
     ? "Checking wallet"
@@ -349,8 +368,17 @@ export default function VaultPage() {
 
         {/* Error state with retry */}
         {error && !loading && (
-          <div className="rounded-lg border border-status-danger/20 bg-status-danger/10 px-4 py-5 text-center">
-            <p className="text-sm text-status-danger">{error}</p>
+          <div
+            role="alert"
+            className="rounded-lg border border-status-danger/20 bg-status-danger/10 px-4 py-5 text-center"
+          >
+            <p className="text-sm text-status-danger">
+              {offline
+                ? usingCache
+                  ? "You're offline. Showing last known balances."
+                  : "You're offline. Reconnect to load your vault balances."
+                : error}
+            </p>
             <button
               onClick={() => void fetchVaultData(false)}
               className="mt-3 rounded-lg border border-border-default px-4 py-1.5 text-xs font-medium text-text-secondary hover:border-border-hover hover:text-text-primary transition-colors"

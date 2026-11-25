@@ -19,6 +19,16 @@ export interface StreamRemainingResponse {
   assetCode?: string;
   assetIssuer?: string;
   decimals?: number;
+  recipient?: string;
+  contractId?: string;
+}
+
+export interface ClawbackExecuteRequest {
+  amount: string;
+  /** Admin audit trail fields recorded with the dispatch. */
+  reasonCode: string;
+  auditTicket: string;
+  reason: string;
 }
 
 export interface ClawbackPreviewRequest {
@@ -86,6 +96,20 @@ export const streamsApi = {
       token,
       body: JSON.stringify(data),
     });
+  },
+
+  /**
+   * Execute clawback (admin only, irreversible)
+   */
+  executeClawback: async (
+    token: string,
+    streamId: string,
+    data: ClawbackExecuteRequest
+  ): Promise<{ streamId: string; clawedBack: string }> => {
+    return request<{ streamId: string; clawedBack: string }>(
+      `/admin/streams/${encodeURIComponent(streamId)}/clawback`,
+      { method: "POST", token, body: JSON.stringify(data) }
+    );
   },
 
   /**

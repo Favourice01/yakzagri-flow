@@ -12,6 +12,28 @@ export interface AdminStreamListParams {
   status?: StreamStatus;
   vestingState?: VestingState;
   adminTag?: string;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+}
+
+export interface AdminStreamSortState {
+  page: number;
+  sortBy: string;
+  sortDir: "asc" | "desc";
+}
+
+/**
+ * Apply a sort change; any change to the sort column or direction resets the
+ * pagination cursor to page 1 so stale cursors never reach the backend.
+ */
+export function applySortChange(
+  state: AdminStreamSortState,
+  next: Partial<Pick<AdminStreamSortState, "sortBy" | "sortDir">>,
+): AdminStreamSortState {
+  const sortBy = next.sortBy ?? state.sortBy;
+  const sortDir = next.sortDir ?? state.sortDir;
+  if (sortBy === state.sortBy && sortDir === state.sortDir) return state;
+  return { page: 1, sortBy, sortDir };
 }
 
 export type StreamHealthStatus =
@@ -141,6 +163,8 @@ export const adminStreamsApi = {
         status: params?.status,
         vestingState: params?.vestingState,
         adminTag: params?.adminTag,
+        sortBy: params?.sortBy,
+        sortDir: params?.sortDir,
       })}`,
       { token },
     ),
